@@ -3,6 +3,7 @@ import FscPicker from './components/FscPicker'
 import Drawer from './components/Drawer'
 import Pills from './components/Pills'
 import { downloadRfqCsv } from './csv'
+import { initBaseline, markSeen, touchVisit } from './visit'
 import { useTriage } from './triage'
 import {
   DEFAULTS, PAGE_SIZE, filterQuery, fmtDate, fromUrl, isSmallBizAside, rowKey, shortAside, toParams,
@@ -29,6 +30,17 @@ export default function App() {
   const [error, setError] = useState('')
   const reqId = useRef(0)
   const triage = useTriage()
+  // when you were last here, pinned for this tab; null on a first visit (nothing is "new" yet)
+  const [baseline, setBaseline] = useState<string | null>(initBaseline)
+  useEffect(() => {
+    touchVisit()
+    const t = setInterval(touchVisit, 60_000)
+    window.addEventListener('pagehide', touchVisit)
+    return () => {
+      clearInterval(t)
+      window.removeEventListener('pagehide', touchVisit)
+    }
+  }, [])
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [showHidden, setShowHidden] = useState(false)
   const [starredView, setStarredView] = useState(false)
@@ -52,11 +64,12 @@ export default function App() {
 
   const loadMeta = useCallback(async () => {
     try {
-      setMeta(await (await fetch('/api/meta')).json())
+      const q = baseline ? `?since=${encodeURIComponent(baseline)}` : ''
+      setMeta(await (await fetch(`/api/meta${q}`)).json())
     } catch {
       /* header chip just stays empty */
     }
-  }, [])
+  }, [baseline])
   useEffect(() => { loadMeta() }, [loadMeta])
 
   // poll while a refresh is running
@@ -74,11 +87,11 @@ export default function App() {
   }, [meta])
 
   const query = useMemo(() => {
-    const p = filterQuery(f)
+    const p = filterQuery(f, baseline)
     p.set('page', String(f.page))
     p.set('pageSize', String(PAGE_SIZE))
     return p.toString()
-  }, [f])
+  }, [f, baseline])
 
   useEffect(() => {
     const id = ++reqId.current
@@ -190,6 +203,27 @@ export default function App() {
         >
           ⚡ Fast award
         </button>
+        {baseline && (meta?.newCount ?? 0) > 0 && (
+          <>
+            <button
+              className={`chip ${f.onlyNew ? 'on' : ''}`}
+              title={`RFQs added since you were last here (${new Date(baseline).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })})`}
+              onClick={() => update({ onlyNew: !f.onlyNew })}
+            >
+              🆕 New ({meta!.newCount.toLocaleString()})
+            </button>
+            <button
+              className="linklike"
+              title="Treat everything listed now as seen"
+              onClick={() => {
+                setBaseline(markSeen())
+                setF((p) => ({ ...p, onlyNew: false, page: 1 }))
+              }}
+            >
+              Mark all seen
+            </button>
+          </>
+        )}
         <button
           className={`chip ${starredView ? 'on' : ''}`}
           title="RFQs you starred (saved in this browser)"
@@ -249,7 +283,7 @@ export default function App() {
           ) : (
             <a
               className={`btn ${total === 0 ? 'disabled' : ''}`}
-              href={total === 0 ? undefined : `/api/rfqs/export.csv?${filterQuery(f).toString()}`}
+              href={total === 0 ? undefined : `/api/rfqs/export.csv?${filterQuery(f, baseline).toString()}`}
               download
               title={`Download all ${total.toLocaleString()} matching RFQs (not just this page) as a spreadsheet-ready CSV. Hidden rows are included.`}
             >
@@ -325,6 +359,7 @@ export default function App() {
                   <a href={r.package_url} target="_blank" rel="noreferrer" title="Open this solicitation on DIBBS (Package View)">
                     {r.sol_display}
                   </a>
+                  {baseline && r.first_seen_at > baseline ? <span className="badge b-new" title="Added since your last visit"> NEW</span> : null}
                   {r.fast_award ? <span className="badge b-amber" title="Fast Award Candidate: micro-purchase quotes may be awarded before the return date"> ⚡</span> : null}
                 </td>
                 <td className="mono nsn">
