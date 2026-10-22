@@ -18,6 +18,7 @@ export interface RfqQuery {
   qtyMax?: number;
   includePast?: boolean;
   fastAward?: boolean;
+  newSince?: string; // ISO time: only rows first seen after it
   sort?: 'due' | 'issued' | 'qty' | 'nsn';
   dir?: 'asc' | 'desc';
   page?: number;
@@ -67,6 +68,7 @@ function build(p: RfqQuery) {
   const off = list(p.office);
   if (off.length) { where.push(`office_prefix IN (${off.map(() => '?').join(',')})`); args.push(...off); }
   if (p.fastAward) where.push('fast_award = 1');
+  if (p.newSince) { where.push('first_seen_at > ?'); args.push(p.newSince); }
   if (p.techDocs === 'yes') where.push(`tech_docs <> 'None' AND tech_docs <> ''`);
   if (p.techDocs === 'no') where.push(`tech_docs = 'None'`); // bulk rows have no tech-docs info (''), so they match neither yes nor no
   if (p.qtyMin != null) { where.push('qty >= ?'); args.push(p.qtyMin); }
@@ -115,7 +117,7 @@ export function* iterateRfqs(p: RfqQuery) {
 }
 
 /** Option lists + data-freshness for the filter bar and header chip. */
-export function meta() {
+export function meta(since?: string) {
   const today = todayET();
   const open = `return_by >= '${today}' AND status IN ('Open', '')`;
   const fscs = db
@@ -133,5 +135,6 @@ export function meta() {
   const coverage = db
     .prepare(`SELECT MIN(${dateOf}) "from", MAX(${dateOf}) "to", SUM(source = 'bulk') bulkRows FROM rfq WHERE ${open}`)
     .get();
-  return { today, fscs, setAsides, offices, totals, lastRun, coverage };
+  const newCount = since ? (db.prepare(`SELECT COUNT(*) c FROM rfq WHERE ${open} AND first_seen_at > ?`).get(since) as { c: number }).c : 0;
+  return { today, fscs, setAsides, offices, totals, lastRun, coverage, newCount };
 }
