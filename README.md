@@ -2,7 +2,7 @@
 
 A fast, focused way for a vendor to scan the day's DLA RFQs from [DIBBS](https://www.dibbs.bsm.dla.mil/RFQ/): pull them in, then search, filter and jump back to the original DIBBS page.
 
-Stack: Node + TypeScript (Express, `better-sqlite3`, `cheerio`) and React + Vite. Prototype built in about an hour, so the scope is deliberately narrow (see "What I cut").
+Stack: Node + TypeScript (Express, `better-sqlite3`, `cheerio`) and React + Vite. Prototype built in a few hours, so the scope is deliberately narrow (see "What I cut").
 
 ## Run it
 
@@ -54,8 +54,16 @@ A vendor evaluating opportunities asks one question per row: *can I realisticall
 
 **Opening on DIBBS.** The solicitation number links to the DIBBS Package View, the NSN links to its NSN page, and each row has direct PDF and Quote links, all in new tabs. DIBBS shows its DoD consent notice first on a fresh browser session, and the PDFs live on a second host (`dibbs2`) with its own notice.
 
+**Working through a list.** Vendors triage dozens of rows, so the UI is built for that:
+- **Product class picker**: multi-select with type-ahead over the official DLA class titles (the "FSC Download" file on DIBBS, kept in `server/data/fsc.json`), so "hose" finds 4720 and you can pick several classes at once.
+- **Filter pills**: every active filter is a removable pill above the table, so the current view is always readable.
+- **Detail drawer**: click a row for every field, the full DIBBS links and copy buttons. `j`/`k` or the arrow keys walk the list, `s` stars, `Esc` closes. "Other RFQs for this NSN" searches that NSN across closed RFQs too.
+- **Star and hide**: star what you're pursuing and hide what you've ruled out. Both are saved in the browser (localStorage), and there's a **★ Starred** view. Hidden rows can be shown again.
+- **CSV export**: downloads *every* row matching the current filters, not just the visible page. It opens cleanly in Excel (UTF-8 BOM, proper quoting, and cells that look like formulas are neutralised). The starred view exports your starred rows.
+
 ## Tradeoffs
 
+- **Star and hide live in the browser, not on the server.** There are no accounts, so they don't follow you across devices, and the server's CSV export includes hidden rows.
 - **SQLite + `LIKE`** instead of a search engine or FTS5: at a few thousand rows it is instant, and there is nothing to run.
 - **Server-side filtering and paging** with indexes on due date, FSC, NSN and issue date, so the table stays quick however many days are loaded.
 - **Open RFQs by default.** Closed, removed and past-due RFQs are hidden unless you tick "Include closed / past due".
@@ -66,9 +74,10 @@ A vendor evaluating opportunities asks one question per row: *can I realisticall
 
 1. **PDF details**: fetch each RFQ's PDF lazily and extract buyer, FOB, delivery days, approved sources (CAGE + part number) and packaging notes. This makes "approved source is my CAGE" filterable. It was cut because it needs a second consent flow on `dibbs2` and PDF layouts vary.
 2. **Scheduled refresh** (weekday cron) plus a backfill of the last N days.
-3. **Saved views and alerts** for pinned FSCs, and CSV export of the current result.
-4. **A detail drawer** and facet counts that update with the active filters.
-5. **Tests**: a parser test against the saved HTML fixture (`server/fixtures/day.html`) and a query-builder test.
+3. **Official bulk files.** DIBBS publishes a daily fixed-width index (`in<yymmdd>.txt`), a batch-quote file with an **approved-sources** list (NSN, CAGE, part number, company) and a zip of all RFQ PDFs, on the "RFQ Download files" page. Ingesting them would make multi-day backfill one small file per day and would enable an "approved source is my CAGE" filter without parsing PDFs. They are posted a day late, and the index lacks status, tech-docs and fast-award flags, so the scraper stays for same-day data. I confirmed the file list and layout but did not build on them.
+4. **Saved views, alerts and a "new since last visit" badge** for pinned product classes.
+5. **Server-side accounts** so star and hide follow you across devices, and facet counts that update with the active filters.
+6. **Tests**: a parser test against the saved HTML fixture (`server/fixtures/day.html`) and a query-builder test.
 
 ## Layout
 
@@ -77,9 +86,15 @@ server/src/client.ts   curl transport, consent, cookies, throttle, timeout
 server/src/scrape.ts   date index, VIEWSTATE paging, row parser (pure)
 server/src/db.ts       SQLite schema + upsert
 server/src/ingest.ts   ingest run + single-flight lock + CLI
-server/src/query.ts    search / filter / sort query builder, filter options
+server/src/query.ts    search / filter / sort query builder, filter options, FSC titles
+server/src/csv.ts      CSV columns + Excel-safe cell escaping
 server/src/index.ts    Express API and static UI
-web/src/App.tsx        the whole UI
+server/data/fsc.json   official DLA FSC titles
+web/src/App.tsx        page: search bar, filters, table, pager
+web/src/components/    FscPicker (multi-select), Pills (active filters), Drawer (row detail)
+web/src/triage.ts      star / hide state in localStorage
+web/src/csv.ts         client-side CSV for the starred view
+web/src/lib.ts         shared types, URL state, query building
 ```
 
-API: `GET /api/rfqs` (filters: `q fsc setAside office techDocs dueWithinDays qtyMin qtyMax fastAward includePast sort dir page pageSize`), `GET /api/meta`, `GET /api/dates`, `POST /api/ingest[?date=MM-DD-YYYY]`.
+API: `GET /api/rfqs` (filters: `q fsc setAside office techDocs dueWithinDays qtyMin qtyMax fastAward includePast sort dir page pageSize`; `fsc`, `setAside` and `office` take comma-separated lists), `GET /api/rfqs/export.csv` (same filters, all rows), `GET /api/meta`, `GET /api/dates`, `POST /api/ingest[?date=MM-DD-YYYY]`.
