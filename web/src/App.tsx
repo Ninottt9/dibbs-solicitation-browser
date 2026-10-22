@@ -144,7 +144,10 @@ export default function App() {
         <div className={`status ${stale ? 'stale' : ''}`}>
           {meta?.lastRun ? (
             <span>
-              Issue date {meta.lastRun.date} · {meta.totals.open.toLocaleString()} open RFQs · updated{' '}
+              {meta.coverage.from && meta.coverage.to
+                ? `Posted ${fmtDate(meta.coverage.from)} – ${fmtDate(meta.coverage.to)} · `
+                : ''}
+              {meta.totals.open.toLocaleString()} open RFQs · updated{' '}
               {new Date(meta.lastRun.finished_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
               {stale ? ` · partial (${meta.lastRun.rows}/${meta.lastRun.expected})` : ''}
             </span>
@@ -152,7 +155,7 @@ export default function App() {
             <span>No data loaded yet — hit Refresh</span>
           )}
           <button className="primary" onClick={refresh} disabled={meta?.ingesting}>
-            {meta?.ingesting ? 'Refreshing from DIBBS…' : 'Refresh'}
+            {meta?.ingesting ? meta.phase || 'Refreshing from DIBBS…' : 'Refresh'}
           </button>
         </div>
       </header>
@@ -335,8 +338,17 @@ export default function App() {
                     {shortAside(r.set_aside)}
                   </span>
                 </td>
-                <td>{r.tech_docs && r.tech_docs !== 'None' ? <span className="badge b-gray">{r.tech_docs}</span> : <span className="muted">None</span>}</td>
-                <td>{fmtDate(r.issue_date)}</td>
+                <td>
+                  {r.tech_docs && r.tech_docs !== 'None'
+                    ? <span className="badge b-gray">{r.tech_docs}</span>
+                    : r.status === '' ? <span className="muted" title="Not in the bulk file; open on DIBBS to check">?</span>
+                    : <span className="muted">None</span>}
+                </td>
+                <td>
+                  {r.issue_date
+                    ? fmtDate(r.issue_date)
+                    : <span className="muted" title="Post date. DIBBS's bulk file has no issue date, so this can be a day earlier than the site's Issued date.">{fmtDate(r.post_date ?? '')}*</span>}
+                </td>
                 <td><DueBadge days={r.days_left} iso={r.return_by} /></td>
                 <td className="links">
                   <a href={r.pdf_url} target="_blank" rel="noreferrer" title="RFQ document (DIBBS asks you to accept the DoD notice first)">PDF</a>

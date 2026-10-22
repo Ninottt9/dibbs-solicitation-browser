@@ -105,11 +105,15 @@ export default function Drawer({
             <dt>Set-aside</dt>
             <dd><span className={`badge ${isSmallBizAside(row.set_aside) ? 'b-green' : 'b-gray'}`}>{row.set_aside || '—'}</span></dd>
             <dt>Tech docs</dt>
-            <dd>{row.tech_docs && row.tech_docs !== 'None' ? row.tech_docs : 'None listed'}</dd>
+            <dd>{row.tech_docs && row.tech_docs !== 'None' ? row.tech_docs : row.status === '' ? 'Unknown' : 'None listed'}</dd>
             <dt>Status</dt>
-            <dd>{row.status || '—'}</dd>
-            <dt>Issued</dt>
-            <dd>{fmtDate(row.issue_date)} · {longDate(row.issue_date)}</dd>
+            <dd>{row.status || 'Not checked yet'}</dd>
+            <dt>{row.issue_date ? 'Issued' : 'Posted'}</dt>
+            <dd>
+              {row.issue_date
+                ? `${fmtDate(row.issue_date)} · ${longDate(row.issue_date)}`
+                : `${fmtDate(row.post_date ?? '')} · ${longDate(row.post_date ?? '')}`}
+            </dd>
             <dt>Buying office</dt>
             <dd className="mono">{row.office_prefix}</dd>
           </dl>
@@ -119,6 +123,13 @@ export default function Drawer({
             <button type="button" className="chip" onClick={onHide}>{hidden ? 'Unhide' : 'Hide this RFQ'}</button>
             <button type="button" className="chip" onClick={onSameNsn} title="Search every RFQ with this NSN, including closed ones">Other RFQs for this NSN</button>
           </div>
+
+          {row.source === 'bulk' && row.status === '' && (
+            <p className="notice" style={{ margin: 0 }}>
+              This RFQ came from DIBBS’s daily bulk file, which has no status, tech-docs or fast-award flags and no issue date.
+              Open it on DIBBS to confirm it is still open; a Refresh fills these in once the site list includes it.
+            </p>
+          )}
 
           <p className="muted dnote">
             DIBBS shows its DoD consent notice the first time you open a link, and the PDF lives on a second DIBBS host with its own notice.

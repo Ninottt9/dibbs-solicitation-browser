@@ -3,14 +3,15 @@ export interface Rfq {
   tech_docs: string; set_aside: string; status: string; pr_no: string; qty: number | null
   issue_date: string; return_by: string; office_prefix: string
   pdf_url: string; package_url: string; nsn_url: string; quote_url: string
-  days_left: number | null; fast_award: number
+  days_left: number | null; fast_award: number; source: string; post_date: string | null
 }
 export interface Opt { value: string; n: number; name?: string }
 export interface Meta {
   today: string; fscs: Opt[]; setAsides: Opt[]; offices: Opt[]
   totals: { total: number; open: number; latestIssue: string }
   lastRun: { finished_at: string; date: string; rows: number; expected: number; status: string } | null
-  ingesting: boolean
+  ingesting: boolean; phase: string
+  coverage: { from: string | null; to: string | null; bulkRows: number }
 }
 export interface Filters {
   q: string; fsc: string; setAside: string; office: string; techDocs: string
