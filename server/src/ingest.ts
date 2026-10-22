@@ -94,12 +94,17 @@ export const runBackfill = (maxDays?: number, log: Log = console.log) => withLoc
  * fast-award), then any older days we don't have yet from the bulk files. A failed scrape doesn't stop
  * the bulk step, and is reported afterwards.
  */
-export const runRefresh = (log: Log = console.log) =>
+export const runRefresh = (log: Log = console.log, opts: { previousDay?: boolean } = {}) =>
   withLock(async () => {
     let scrapeError: unknown;
     let site: Awaited<ReturnType<typeof scrapeDay>> | undefined;
     try {
       site = await scrapeDay(undefined, log);
+      // also re-read the previous issue day so statuses of RFQs from yesterday don't go stale
+      if (opts.previousDay) {
+        const prev = (await listDates())[1];
+        if (prev) await scrapeDay(prev, log);
+      }
     } catch (e) {
       scrapeError = e;
       log(`site scrape failed: ${e}`);

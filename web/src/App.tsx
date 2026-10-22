@@ -79,11 +79,27 @@ export default function App() {
     return () => clearInterval(t)
   }, [meta?.ingesting, loadMeta])
 
-  const wasIngesting = useRef(false)
-  const [refreshTick, setRefreshTick] = useState(0)
+  // keep the header and "new" counts live even when the page is just left open (a scheduled refresh may run)
   useEffect(() => {
-    if (wasIngesting.current && meta && !meta.ingesting) setRefreshTick((n) => n + 1)
-    wasIngesting.current = !!meta?.ingesting
+    const t = setInterval(loadMeta, 60_000)
+    return () => clearInterval(t)
+  }, [loadMeta])
+
+  // when a refresh finishes (started by the button, the CLI or the scheduler): reload the table and say so
+  const [refreshTick, setRefreshTick] = useState(0)
+  const [toast, setToast] = useState('')
+  const seen = useRef<{ finished: string; total: number } | null>(null)
+  useEffect(() => {
+    if (!meta?.lastRun) return
+    const cur = { finished: meta.lastRun.finished_at, total: meta.totals.total }
+    const prev = seen.current
+    seen.current = cur
+    if (!prev || prev.finished === cur.finished) return
+    setRefreshTick((n) => n + 1)
+    const added = cur.total - prev.total
+    setToast(`Updated ${new Date(cur.finished).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}: ${added > 0 ? `${added.toLocaleString()} new RFQs` : 'no new RFQs'}`)
+    const t = setTimeout(() => setToast(''), 10_000)
+    return () => clearTimeout(t)
   }, [meta])
 
   const query = useMemo(() => {
@@ -166,6 +182,15 @@ export default function App() {
             </span>
           ) : (
             <span>No data loaded yet — hit Refresh</span>
+          )}
+          {meta && (
+            <span
+              className={meta.autoRefresh.lastError ? 'autor warn' : 'autor'}
+              title={meta.autoRefresh.lastError || 'Hourly on weekdays, 8:00-18:00 US Eastern. Start the server with "npm run start:live" to turn it on.'}
+            >
+              {meta.autoRefresh.enabled ? `Auto-refresh on · next ${meta.autoRefresh.next}` : 'Auto-refresh off'}
+              {meta.autoRefresh.lastError ? ' · last run failed' : ''}
+            </span>
           )}
           <button className="primary" onClick={refresh} disabled={meta?.ingesting}>
             {meta?.ingesting ? meta.phase || 'Refreshing from DIBBS…' : 'Refresh'}
@@ -408,6 +433,13 @@ export default function App() {
           </div>
         )}
       </div>
+
+      {toast && (
+        <div className="toast" role="status">
+          {toast}
+          <button className="linklike" onClick={() => setToast('')} aria-label="Dismiss">✕</button>
+        </div>
+      )}
 
       {openRow && (
         <Drawer

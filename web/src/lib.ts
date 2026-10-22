@@ -11,6 +11,7 @@ export interface Meta {
   totals: { total: number; open: number; latestIssue: string }
   lastRun: { finished_at: string; date: string; rows: number; expected: number; status: string } | null
   ingesting: boolean; phase: string; newCount: number
+  autoRefresh: { enabled: boolean; next: string; lastError: string }
   coverage: { from: string | null; to: string | null; bulkRows: number }
 }
 export interface Filters {
