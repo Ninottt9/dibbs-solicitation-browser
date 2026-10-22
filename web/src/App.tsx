@@ -1,53 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-
-interface Rfq {
-  sol_no: string; sol_display: string; nsn: string; fsc: string; nomenclature: string
-  tech_docs: string; set_aside: string; status: string; pr_no: string; qty: number | null
-  issue_date: string; return_by: string; office_prefix: string
-  pdf_url: string; package_url: string; nsn_url: string; quote_url: string; days_left: number | null; fast_award: number
-}
-interface Opt { value: string; n: number; sample?: string }
-interface Meta {
-  today: string; fscs: Opt[]; setAsides: Opt[]; offices: Opt[]
-  totals: { total: number; open: number; latestIssue: string }
-  lastRun: { finished_at: string; date: string; rows: number; expected: number; status: string } | null
-  ingesting: boolean
-}
-interface Filters {
-  q: string; fsc: string; setAside: string; office: string; techDocs: string
-  dueWithinDays: string; qtyMin: string; includePast: boolean; fastAward: boolean; sort: string; dir: string; page: number
-}
-
-const DEFAULTS: Filters = {
-  q: '', fsc: '', setAside: '', office: '', techDocs: '', dueWithinDays: '', qtyMin: '',
-  includePast: false, fastAward: false, sort: 'due', dir: 'asc', page: 1,
-}
-const PAGE_SIZE = 50
-
-function fromUrl(): Filters {
-  const p = new URLSearchParams(location.search)
-  const f = { ...DEFAULTS }
-  for (const k of Object.keys(DEFAULTS) as (keyof Filters)[]) {
-    const v = p.get(k)
-    if (v == null) continue
-    if (k === 'includePast' || k === 'fastAward') f[k] = v === '1'
-    else if (k === 'page') f.page = Math.max(1, Number(v) || 1)
-    else (f[k] as string) = v
-  }
-  return f
-}
-
-function toParams(f: Filters) {
-  const p = new URLSearchParams()
-  for (const k of Object.keys(DEFAULTS) as (keyof Filters)[]) {
-    const v = f[k]
-    if (v === DEFAULTS[k] || v === '') continue
-    p.set(k, typeof v === 'boolean' ? (v ? '1' : '0') : String(v))
-  }
-  return p
-}
-
-const fmtDate = (iso: string) => (iso ? new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—')
+import FscPicker from './components/FscPicker'
+import Pills from './components/Pills'
+import {
+  DEFAULTS, PAGE_SIZE, filterQuery, fmtDate, fromUrl, isSmallBizAside, rowKey, shortAside, toParams,
+  type Filters, type Meta, type Rfq,
+} from './lib'
 
 function DueBadge({ days, iso }: { days: number | null; iso: string }) {
   if (days == null) return <>—</>
@@ -58,12 +15,6 @@ function DueBadge({ days, iso }: { days: number | null; iso: string }) {
       {fmtDate(iso)} <span className={`badge ${cls}`}>{label}</span>
     </span>
   )
-}
-
-function shortAside(s: string) {
-  if (!s) return '—'
-  if (/unrestricted/i.test(s)) return 'Unrestricted'
-  return s.replace(/ Set-Aside/i, '')
 }
 
 export default function App() {
@@ -79,11 +30,12 @@ export default function App() {
     setF((prev) => ({ ...prev, page: 1, ...patch }))
   }, [])
 
-  // debounce the search box
+  // debounce the search box; keep it in sync when a pill clears the search
   useEffect(() => {
     const t = setTimeout(() => qInput !== f.q && update({ q: qInput }), 250)
     return () => clearTimeout(t)
   }, [qInput, f.q, update])
+  useEffect(() => { setQInput(f.q) }, [f.q])
 
   // filter state lives in the URL so views are shareable
   useEffect(() => {
@@ -103,9 +55,7 @@ export default function App() {
   // poll while a refresh is running
   useEffect(() => {
     if (!meta?.ingesting) return
-    const t = setInterval(async () => {
-      await loadMeta()
-    }, 2500)
+    const t = setInterval(loadMeta, 2500)
     return () => clearInterval(t)
   }, [meta?.ingesting, loadMeta])
 
@@ -117,18 +67,9 @@ export default function App() {
   }, [meta])
 
   const query = useMemo(() => {
-    const p = new URLSearchParams()
-    if (f.q) p.set('q', f.q)
-    if (f.fsc) p.set('fsc', f.fsc)
-    if (f.setAside) p.set('setAside', f.setAside)
-    if (f.office) p.set('office', f.office)
-    if (f.techDocs) p.set('techDocs', f.techDocs)
-    if (f.dueWithinDays) p.set('dueWithinDays', f.dueWithinDays)
-    if (f.qtyMin) p.set('qtyMin', f.qtyMin)
-    if (f.includePast) p.set('includePast', '1')
-    if (f.fastAward) p.set('fastAward', '1')
-    p.set('sort', f.sort); p.set('dir', f.dir)
-    p.set('page', String(f.page)); p.set('pageSize', String(PAGE_SIZE))
+    const p = filterQuery(f)
+    p.set('page', String(f.page))
+    p.set('pageSize', String(PAGE_SIZE))
     return p.toString()
   }, [f])
 
@@ -147,6 +88,10 @@ export default function App() {
     if (r.status === 409 || r.ok) loadMeta().then(() => setMeta((m) => (m ? { ...m, ingesting: true } : m)))
   }
 
+  const fscName = useCallback(
+    (code: string) => meta?.fscs.find((o) => o.value === code)?.name ?? '',
+    [meta],
+  )
   const smallBiz = (meta?.setAsides ?? []).filter((o) => /small business/i.test(o.value)).map((o) => o.value).join(',')
   const chipOn = {
     soon: f.dueWithinDays === '3',
@@ -157,11 +102,14 @@ export default function App() {
   const sortBy = (col: string) =>
     update({ sort: col, dir: f.sort === col && f.dir === 'asc' ? 'desc' : col === 'qty' || col === 'issued' ? 'desc' : 'asc' })
   const arrow = (col: string) => (f.sort === col ? (f.dir === 'asc' ? ' ▲' : ' ▼') : '')
+  const clearAll = () => {
+    setQInput('')
+    setF({ ...DEFAULTS })
+  }
 
   const total = data?.total ?? 0
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const stale = meta?.lastRun && meta.lastRun.status !== 'ok'
-  const dirty = Object.keys(DEFAULTS).some((k) => !['sort', 'dir', 'page'].includes(k) && f[k as keyof Filters] !== DEFAULTS[k as keyof Filters])
 
   return (
     <div className="app">
@@ -217,14 +165,7 @@ export default function App() {
         </button>
 
         <div className="row2">
-          <select value={f.fsc} onChange={(e) => update({ fsc: e.target.value })} title="Federal Supply Class — the product category">
-            <option value="">All product classes (FSC)</option>
-            {meta?.fscs.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.value} · e.g. {o.sample} ({o.n})
-              </option>
-            ))}
-          </select>
+          <FscPicker options={meta?.fscs ?? []} value={f.fsc} onChange={(v) => update({ fsc: v })} />
           <select value={f.setAside} onChange={(e) => update({ setAside: e.target.value })}>
             <option value="">Any set-aside</option>
             {meta?.setAsides.map((o) => (
@@ -258,21 +199,13 @@ export default function App() {
           <label className="muted">
             <input type="checkbox" checked={f.includePast} onChange={(e) => update({ includePast: e.target.checked })} /> Include closed / past due
           </label>
-          {dirty && (
-            <button
-              onClick={() => {
-                setQInput('')
-                setF({ ...DEFAULTS })
-              }}
-            >
-              Clear filters
-            </button>
-          )}
           <span className="muted" style={{ marginLeft: 'auto' }}>
             {loading && !data ? 'Loading…' : `${total.toLocaleString()} result${total === 1 ? '' : 's'}`}
           </span>
         </div>
       </div>
+
+      <Pills f={f} fscName={fscName} smallBiz={smallBiz} onChange={update} onClearAll={clearAll} />
 
       {error && <div className="err">Couldn’t load RFQs: {error}. The server may be down.</div>}
 
@@ -300,7 +233,7 @@ export default function App() {
                 </tr>
               ))}
             {data?.items.map((r) => (
-              <tr key={`${r.sol_no}|${r.nsn}|${r.pr_no}`}>
+              <tr key={rowKey(r)}>
                 <td className="sol mono">
                   <a href={r.package_url} target="_blank" rel="noreferrer" title="Open this solicitation on DIBBS (Package View)">
                     {r.sol_display}
@@ -311,10 +244,10 @@ export default function App() {
                   <a href={r.nsn_url} target="_blank" rel="noreferrer" title="NSN history on DIBBS">{r.nsn}</a>
                 </td>
                 <td className="nomen" title={r.nomenclature}>{r.nomenclature}</td>
-                <td className="mono">{r.fsc || '—'}</td>
+                <td className="mono" title={r.fsc_name}>{r.fsc || '—'}</td>
                 <td className="num">{r.qty?.toLocaleString() ?? '—'}</td>
                 <td>
-                  <span className={`badge ${/small|8\(a\)|hubzone|service|women/i.test(r.set_aside) ? 'b-green' : 'b-gray'}`} title={r.set_aside}>
+                  <span className={`badge ${isSmallBizAside(r.set_aside) ? 'b-green' : 'b-gray'}`} title={r.set_aside}>
                     {shortAside(r.set_aside)}
                   </span>
                 </td>
