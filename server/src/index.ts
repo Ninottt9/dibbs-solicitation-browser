@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { CSV_BOM, RFQ_COLUMNS, csvLine } from './csv.js';
 import { ingestPhase, isIngesting, runIngest, runRefresh } from './ingest.js';
+import { autoRefreshInfo, startScheduler } from './scheduler.js';
 import { iterateRfqs, meta, queryRfqs, todayET, type RfqQuery } from './query.js';
 import { listDates } from './scrape.js';
 
@@ -52,7 +53,7 @@ app.get('/api/rfqs/export.csv', (req, res) => {
   }
 });
 
-app.get('/api/meta', (_req, res) => res.json({ ...meta(isoTime(_req.query.since)), ingesting: isIngesting(), phase: ingestPhase() }));
+app.get('/api/meta', (_req, res) => res.json({ ...meta(isoTime(_req.query.since)), ingesting: isIngesting(), phase: ingestPhase(), autoRefresh: autoRefreshInfo() }));
 
 app.get('/api/dates', async (_req, res) => {
   try {
@@ -79,4 +80,8 @@ if (existsSync(dist)) {
 }
 
 const port = Number(process.env.PORT ?? 3000);
-app.listen(port, () => console.log(`API on http://localhost:${port}`));
+app.listen(port, () => {
+  console.log(`API on http://localhost:${port}`);
+  // opt-in so the app never contacts DIBBS on its own unless asked: npm run start:live
+  if (process.argv.includes('--auto-refresh') || process.env.AUTO_REFRESH === '1') startScheduler();
+});
