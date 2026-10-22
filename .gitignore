@@ -4,3 +4,5 @@ dist/
 .env
 server/data/*.db-wal
 server/data/*.db-shm
+server/data/live.db
+server/data/live.db-journal
