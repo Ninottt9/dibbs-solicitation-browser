@@ -1,9 +1,10 @@
 import cors from 'cors';
-import express from 'express';
+import express, { type Request } from 'express';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { CSV_BOM, RFQ_COLUMNS, csvLine } from './csv.js';
 import { isIngesting, runIngest } from './ingest.js';
-import { meta, queryRfqs, type RfqQuery } from './query.js';
+import { iterateRfqs, meta, queryRfqs, todayET, type RfqQuery } from './query.js';
 import { listDates } from './scrape.js';
 
 const app = express();
@@ -12,9 +13,9 @@ app.use(cors());
 const num = (v: unknown) => (v === undefined || v === '' || Number.isNaN(Number(v)) ? undefined : Number(v));
 const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
 
-app.get('/api/rfqs', (req, res) => {
-  const q = req.query;
-  const p: RfqQuery = {
+/** Same filter vocabulary for the table and the CSV export. */
+function parseQuery(q: Request['query']): RfqQuery {
+  return {
     q: str(q.q), fsc: str(q.fsc), setAside: str(q.setAside), office: str(q.office),
     techDocs: q.techDocs === 'yes' || q.techDocs === 'no' ? q.techDocs : undefined,
     dueWithinDays: num(q.dueWithinDays), qtyMin: num(q.qtyMin), qtyMax: num(q.qtyMax),
@@ -24,10 +25,27 @@ app.get('/api/rfqs', (req, res) => {
     dir: q.dir === 'desc' ? 'desc' : 'asc',
     page: num(q.page), pageSize: num(q.pageSize),
   };
+}
+
+app.get('/api/rfqs', (req, res) => {
   try {
-    res.json(queryRfqs(p));
+    res.json(queryRfqs(parseQuery(req.query)));
   } catch (e) {
     res.status(500).json({ error: String(e) });
+  }
+});
+
+// All rows matching the current filters (not just the visible page), streamed as Excel-friendly CSV.
+app.get('/api/rfqs/export.csv', (req, res) => {
+  try {
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="dibbs-rfqs-${todayET()}.csv"`);
+    res.write(CSV_BOM + csvLine(RFQ_COLUMNS.map((c) => c.header)));
+    for (const r of iterateRfqs(parseQuery(req.query))) res.write(csvLine(RFQ_COLUMNS.map((c) => c.get(r))));
+    res.end();
+  } catch (e) {
+    if (!res.headersSent) res.status(500).json({ error: String(e) });
+    else res.end();
   }
 });
 

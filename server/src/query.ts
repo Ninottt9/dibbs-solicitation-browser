@@ -90,12 +90,28 @@ export function queryRfqs(p: RfqQuery) {
   const items = db
     .prepare(`SELECT * FROM rfq ${sql} ORDER BY ${col} ${dir}, sol_no ASC LIMIT ? OFFSET ?`)
     .all(...args, pageSize, (page - 1) * pageSize) as Record<string, unknown>[];
-  const t0 = Date.parse(today + 'T00:00:00Z');
-  for (const r of items) {
-    r.fsc_name = FSC_NAMES[r.fsc as string] ?? '';
-    r.days_left = r.return_by ? Math.round((Date.parse(r.return_by as string + 'T00:00:00Z') - t0) / 86400000) : null;
-  }
+  for (const r of items) decorate(r, today);
   return { items, total, page, pageSize };
+}
+
+/** Derived, display-only fields: official FSC title and days left to respond. */
+function decorate(r: Record<string, unknown>, today: string) {
+  r.fsc_name = FSC_NAMES[r.fsc as string] ?? '';
+  r.days_left = r.return_by
+    ? Math.round((Date.parse((r.return_by as string) + 'T00:00:00Z') - Date.parse(today + 'T00:00:00Z')) / 86400000)
+    : null;
+}
+
+/** Every row matching the filters (no paging), streamed one at a time for CSV export. */
+export function* iterateRfqs(p: RfqQuery) {
+  const { sql, args, today } = build(p);
+  const col = SORTS[p.sort ?? 'due'] ?? 'return_by';
+  const dir = p.dir === 'desc' ? 'DESC' : 'ASC';
+  const stmt = db.prepare(`SELECT * FROM rfq ${sql} ORDER BY ${col} ${dir}, sol_no ASC`);
+  for (const r of stmt.iterate(...args) as IterableIterator<Record<string, unknown>>) {
+    decorate(r, today);
+    yield r;
+  }
 }
 
 /** Option lists + data-freshness for the filter bar and header chip. */
