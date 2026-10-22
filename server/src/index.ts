@@ -3,7 +3,7 @@ import express, { type Request } from 'express';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { CSV_BOM, RFQ_COLUMNS, csvLine } from './csv.js';
-import { isIngesting, runIngest } from './ingest.js';
+import { ingestPhase, isIngesting, runIngest, runRefresh } from './ingest.js';
 import { iterateRfqs, meta, queryRfqs, todayET, type RfqQuery } from './query.js';
 import { listDates } from './scrape.js';
 
@@ -49,7 +49,7 @@ app.get('/api/rfqs/export.csv', (req, res) => {
   }
 });
 
-app.get('/api/meta', (_req, res) => res.json({ ...meta(), ingesting: isIngesting() }));
+app.get('/api/meta', (_req, res) => res.json({ ...meta(), ingesting: isIngesting(), phase: ingestPhase() }));
 
 app.get('/api/dates', async (_req, res) => {
   try {
@@ -63,7 +63,8 @@ app.get('/api/dates', async (_req, res) => {
 app.post('/api/ingest', (req, res) => {
   if (isIngesting()) return res.status(409).json({ error: 'ingest already running' });
   const date = str(req.query.date);
-  runIngest(date).catch((e) => console.error('ingest failed:', e));
+  // with a date: scrape just that day; without: newest day from the site + missing older days from the bulk files
+  (date ? runIngest(date) : runRefresh()).catch((e) => console.error('ingest failed:', e));
   res.status(202).json({ started: true, date: date ?? 'latest' });
 });
 

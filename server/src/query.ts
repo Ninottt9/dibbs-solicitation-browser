@@ -68,16 +68,16 @@ function build(p: RfqQuery) {
   if (off.length) { where.push(`office_prefix IN (${off.map(() => '?').join(',')})`); args.push(...off); }
   if (p.fastAward) where.push('fast_award = 1');
   if (p.techDocs === 'yes') where.push(`tech_docs <> 'None' AND tech_docs <> ''`);
-  if (p.techDocs === 'no') where.push(`(tech_docs = 'None' OR tech_docs = '')`);
+  if (p.techDocs === 'no') where.push(`tech_docs = 'None'`); // bulk rows have no tech-docs info (''), so they match neither yes nor no
   if (p.qtyMin != null) { where.push('qty >= ?'); args.push(p.qtyMin); }
   if (p.qtyMax != null) { where.push('qty <= ?'); args.push(p.qtyMax); }
-  if (!p.includePast) { where.push('return_by >= ?'); args.push(today); where.push(`status = 'Open'`); }
+  if (!p.includePast) { where.push('return_by >= ?'); args.push(today); where.push(`status IN ('Open', '')`); }
   if (p.dueWithinDays != null) { where.push('return_by <= ?'); args.push(addDays(today, p.dueWithinDays)); }
   return { sql: where.length ? 'WHERE ' + where.join(' AND ') : '', args, today };
 }
 
 const SORTS: Record<string, string> = {
-  due: 'return_by', issued: 'issue_date', qty: 'qty', nsn: 'nsn13',
+  due: 'return_by', issued: "COALESCE(NULLIF(issue_date, ''), post_date)", qty: 'qty', nsn: 'nsn13',
 };
 
 export function queryRfqs(p: RfqQuery) {
@@ -117,7 +117,7 @@ export function* iterateRfqs(p: RfqQuery) {
 /** Option lists + data-freshness for the filter bar and header chip. */
 export function meta() {
   const today = todayET();
-  const open = `return_by >= '${today}' AND status = 'Open'`;
+  const open = `return_by >= '${today}' AND status IN ('Open', '')`;
   const fscs = db
     .prepare(`SELECT fsc value, COUNT(*) n FROM rfq WHERE fsc <> '' AND ${open} GROUP BY fsc ORDER BY n DESC`)
     .all()
@@ -125,8 +125,13 @@ export function meta() {
   const setAsides = db.prepare(`SELECT set_aside value, COUNT(*) n FROM rfq WHERE set_aside <> '' AND ${open} GROUP BY set_aside ORDER BY n DESC`).all();
   const offices = db.prepare(`SELECT office_prefix value, COUNT(*) n FROM rfq WHERE ${open} GROUP BY office_prefix ORDER BY n DESC`).all();
   const totals = db.prepare(`SELECT COUNT(*) total, SUM(${open}) open, MAX(issue_date) latestIssue FROM rfq`).get();
+  // the freshness chip is about the last scrape of the site; bulk loads are reported separately
   const lastRun = db
-    .prepare(`SELECT * FROM ingest_run WHERE finished_at IS NOT NULL ORDER BY id DESC LIMIT 1`)
+    .prepare(`SELECT * FROM ingest_run WHERE mode = 'site' AND finished_at IS NOT NULL ORDER BY id DESC LIMIT 1`)
     .get();
-  return { today, fscs, setAsides, offices, totals, lastRun };
+  const dateOf = `COALESCE(NULLIF(issue_date, ''), post_date)`;
+  const coverage = db
+    .prepare(`SELECT MIN(${dateOf}) "from", MAX(${dateOf}) "to", SUM(source = 'bulk') bulkRows FROM rfq WHERE ${open}`)
+    .get();
+  return { today, fscs, setAsides, offices, totals, lastRun, coverage };
 }
