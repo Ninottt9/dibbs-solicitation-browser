@@ -1,4 +1,11 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { db } from './db.js';
+
+/** Official DLA FSC titles (from DIBBS Acquisition Downloads), keyed by 4-digit class. */
+const FSC_NAMES: Record<string, string> = JSON.parse(
+  readFileSync(resolve(import.meta.dirname, '../data/fsc.json'), 'utf8'),
+);
 
 export interface RfqQuery {
   q?: string;
@@ -85,6 +92,7 @@ export function queryRfqs(p: RfqQuery) {
     .all(...args, pageSize, (page - 1) * pageSize) as Record<string, unknown>[];
   const t0 = Date.parse(today + 'T00:00:00Z');
   for (const r of items) {
+    r.fsc_name = FSC_NAMES[r.fsc as string] ?? '';
     r.days_left = r.return_by ? Math.round((Date.parse(r.return_by as string + 'T00:00:00Z') - t0) / 86400000) : null;
   }
   return { items, total, page, pageSize };
@@ -95,7 +103,9 @@ export function meta() {
   const today = todayET();
   const open = `return_by >= '${today}' AND status = 'Open'`;
   const fscs = db
-    .prepare(`SELECT fsc value, COUNT(*) n, MIN(nomenclature) sample FROM rfq WHERE fsc <> '' AND ${open} GROUP BY fsc ORDER BY n DESC`)
+    .prepare(`SELECT fsc value, COUNT(*) n FROM rfq WHERE fsc <> '' AND ${open} GROUP BY fsc ORDER BY n DESC`)
+    .all()
+    .map((o) => ({ ...(o as { value: string; n: number }), name: FSC_NAMES[(o as { value: string }).value] ?? '' }));
     .all();
   const setAsides = db.prepare(`SELECT set_aside value, COUNT(*) n FROM rfq WHERE set_aside <> '' AND ${open} GROUP BY set_aside ORDER BY n DESC`).all();
   const offices = db.prepare(`SELECT office_prefix value, COUNT(*) n FROM rfq WHERE ${open} GROUP BY office_prefix ORDER BY n DESC`).all();
