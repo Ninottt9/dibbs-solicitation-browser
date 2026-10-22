@@ -221,7 +221,7 @@ export default function App() {
             <option value="">All product classes (FSC)</option>
             {meta?.fscs.map((o) => (
               <option key={o.value} value={o.value}>
-                {o.value} · {o.sample} ({o.n})
+                {o.value} · e.g. {o.sample} ({o.n})
               </option>
             ))}
           </select>
