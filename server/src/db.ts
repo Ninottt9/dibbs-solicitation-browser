@@ -1,10 +1,14 @@
 import Database from 'better-sqlite3';
-import { mkdirSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import type { Rfq } from './scrape.js';
 
-const DB_PATH = resolve(import.meta.dirname, '../data/rfq.db');
+// The committed snapshot (rfq.db) is never written to. The app works on a local, git-ignored live.db,
+// which is seeded from the snapshot the first time the server starts. Override with DB_PATH.
+const SNAPSHOT_PATH = resolve(import.meta.dirname, '../data/rfq.db');
+const DB_PATH = process.env.DB_PATH ?? resolve(import.meta.dirname, '../data/live.db');
 mkdirSync(dirname(DB_PATH), { recursive: true });
+if (!existsSync(DB_PATH) && existsSync(SNAPSHOT_PATH)) copyFileSync(SNAPSHOT_PATH, DB_PATH);
 export const db = new Database(DB_PATH);
 db.pragma('journal_mode = DELETE');
 
