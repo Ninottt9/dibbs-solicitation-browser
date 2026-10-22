@@ -106,7 +106,6 @@ export function meta() {
     .prepare(`SELECT fsc value, COUNT(*) n FROM rfq WHERE fsc <> '' AND ${open} GROUP BY fsc ORDER BY n DESC`)
     .all()
     .map((o) => ({ ...(o as { value: string; n: number }), name: FSC_NAMES[(o as { value: string }).value] ?? '' }));
-    .all();
   const setAsides = db.prepare(`SELECT set_aside value, COUNT(*) n FROM rfq WHERE set_aside <> '' AND ${open} GROUP BY set_aside ORDER BY n DESC`).all();
   const offices = db.prepare(`SELECT office_prefix value, COUNT(*) n FROM rfq WHERE ${open} GROUP BY office_prefix ORDER BY n DESC`).all();
   const totals = db.prepare(`SELECT COUNT(*) total, SUM(${open}) open, MAX(issue_date) latestIssue FROM rfq`).get();
