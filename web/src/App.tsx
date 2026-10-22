@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import FscPicker from './components/FscPicker'
+import Drawer from './components/Drawer'
 import Pills from './components/Pills'
+import { useTriage } from './triage'
 import {
   DEFAULTS, PAGE_SIZE, filterQuery, fmtDate, fromUrl, isSmallBizAside, rowKey, shortAside, toParams,
   type Filters, type Meta, type Rfq,
@@ -25,6 +27,10 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const reqId = useRef(0)
+  const triage = useTriage()
+  const [openKey, setOpenKey] = useState<string | null>(null)
+  const [showHidden, setShowHidden] = useState(false)
+  const [starredView, setStarredView] = useState(false)
 
   const update = useCallback((patch: Partial<Filters>) => {
     setF((prev) => ({ ...prev, page: 1, ...patch }))
@@ -107,6 +113,23 @@ export default function App() {
     setF({ ...DEFAULTS })
   }
 
+  // starred view comes from local snapshots, so days-left is recomputed from today's date
+  const starredRows: Rfq[] = triage.starred
+    .map((r) => ({
+      ...r,
+      days_left: meta && r.return_by ? Math.round((Date.parse(r.return_by + 'T00:00:00Z') - Date.parse(meta.today + 'T00:00:00Z')) / 86400000) : r.days_left,
+    }))
+    .sort((a, b) => a.return_by.localeCompare(b.return_by))
+  const baseRows = starredView ? starredRows : data?.items ?? []
+  const hiddenOnPage = starredView ? 0 : baseRows.filter(triage.isHidden).length
+  const rows = showHidden || starredView ? baseRows : baseRows.filter((r) => !triage.isHidden(r))
+  const openIdx = openKey ? rows.findIndex((r) => rowKey(r) === openKey) : -1
+  const openRow = openIdx >= 0 ? rows[openIdx] : null
+  const moveOpen = (delta: number) => {
+    const next = rows[openIdx + delta]
+    if (next) setOpenKey(rowKey(next))
+  }
+
   const total = data?.total ?? 0
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const stale = meta?.lastRun && meta.lastRun.status !== 'ok'
@@ -163,6 +186,13 @@ export default function App() {
         >
           ⚡ Fast award
         </button>
+        <button
+          className={`chip ${starredView ? 'on' : ''}`}
+          title="RFQs you starred (saved in this browser)"
+          onClick={() => setStarredView((v) => !v)}
+        >
+          ★ Starred ({triage.starredCount})
+        </button>
 
         <div className="row2">
           <FscPicker options={meta?.fscs ?? []} value={f.fsc} onChange={(v) => update({ fsc: v })} />
@@ -200,12 +230,29 @@ export default function App() {
             <input type="checkbox" checked={f.includePast} onChange={(e) => update({ includePast: e.target.checked })} /> Include closed / past due
           </label>
           <span className="muted" style={{ marginLeft: 'auto' }}>
-            {loading && !data ? 'Loading…' : `${total.toLocaleString()} result${total === 1 ? '' : 's'}`}
+            {starredView
+              ? `${rows.length} starred`
+              : loading && !data ? 'Loading…' : `${total.toLocaleString()} result${total === 1 ? '' : 's'}`}
           </span>
         </div>
       </div>
 
-      <Pills f={f} fscName={fscName} smallBiz={smallBiz} onChange={update} onClearAll={clearAll} />
+      {starredView ? (
+        <div className="notice">
+          Showing your starred RFQs, soonest due first. They are saved in this browser, so statuses may be out of date; open one to check on DIBBS.
+          <button className="linklike" onClick={() => setStarredView(false)}>Back to all RFQs</button>
+        </div>
+      ) : (
+        <Pills f={f} fscName={fscName} smallBiz={smallBiz} onChange={update} onClearAll={clearAll} />
+      )}
+      {!starredView && triage.hiddenCount > 0 && (
+        <div className="muted" style={{ marginBottom: 8, fontSize: 12 }}>
+          {hiddenOnPage > 0 ? `${hiddenOnPage} hidden on this page · ` : ''}{triage.hiddenCount} hidden in total ·{' '}
+          <button className="linklike" onClick={() => setShowHidden((v) => !v)}>{showHidden ? 'Hide them again' : 'Show hidden'}</button>
+          {' · '}
+          <button className="linklike" onClick={triage.clearHidden}>Unhide all</button>
+        </div>
+      )}
 
       {error && <div className="err">Couldn’t load RFQs: {error}. The server may be down.</div>}
 
@@ -213,6 +260,7 @@ export default function App() {
         <table>
           <thead>
             <tr>
+              <th className="star" aria-label="Star" />
               <th>Solicitation</th>
               <th className="sortable" onClick={() => sortBy('nsn')}>NSN{arrow('nsn')}</th>
               <th>Nomenclature</th>
@@ -226,14 +274,31 @@ export default function App() {
             </tr>
           </thead>
           <tbody>
-            {!data &&
+            {!data && !starredView &&
               Array.from({ length: 10 }, (_, i) => (
                 <tr key={i} className="skel">
-                  {Array.from({ length: 10 }, (_, j) => <td key={j} />)}
+                  {Array.from({ length: 11 }, (_, j) => <td key={j} />)}
                 </tr>
               ))}
-            {data?.items.map((r) => (
-              <tr key={rowKey(r)}>
+            {rows.map((r) => (
+              <tr
+                key={rowKey(r)}
+                className={`clickable ${triage.isHidden(r) ? 'hiddenrow' : ''} ${openKey === rowKey(r) ? 'selected' : ''}`}
+                onClick={(e) => {
+                  if ((e.target as HTMLElement).closest('a,button')) return
+                  setOpenKey(rowKey(r))
+                }}
+              >
+                <td className="star">
+                  <button
+                    className={`iconbtn ${triage.isStarred(r) ? 'on' : ''}`}
+                    aria-label={triage.isStarred(r) ? 'Unstar' : 'Star'}
+                    title={triage.isStarred(r) ? 'Remove star' : 'Star this RFQ'}
+                    onClick={() => triage.toggleStar(r)}
+                  >
+                    {triage.isStarred(r) ? '★' : '☆'}
+                  </button>
+                </td>
                 <td className="sol mono">
                   <a href={r.package_url} target="_blank" rel="noreferrer" title="Open this solicitation on DIBBS (Package View)">
                     {r.sol_display}
@@ -257,19 +322,54 @@ export default function App() {
                 <td className="links">
                   <a href={r.pdf_url} target="_blank" rel="noreferrer" title="RFQ document (DIBBS asks you to accept the DoD notice first)">PDF</a>
                   <a href={r.quote_url} target="_blank" rel="noreferrer" title="Submit a quote on DIBBS">Quote</a>
+                  <button className="iconbtn" onClick={() => triage.toggleHide(r)} title={triage.isHidden(r) ? 'Unhide' : 'Hide this RFQ (not for me)'}>
+                    {triage.isHidden(r) ? '↺' : '✕'}
+                  </button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-        {data && data.items.length === 0 && (
+        {(starredView || data) && rows.length === 0 && (
           <div className="empty">
-            {meta && meta.totals.total === 0 ? 'No data yet. Click Refresh to pull the latest RFQs from DIBBS.' : 'No RFQs match these filters.'}
+            {starredView
+              ? 'Nothing starred yet. Click ☆ on any row to keep it here.'
+              : meta && meta.totals.total === 0
+                ? 'No data yet. Click Refresh to pull the latest RFQs from DIBBS.'
+                : hiddenOnPage > 0
+                  ? 'Every RFQ on this page is hidden.'
+                  : 'No RFQs match these filters.'}
           </div>
         )}
       </div>
 
-      {total > PAGE_SIZE && (
+      {openRow && (
+        <Drawer
+          row={openRow}
+          index={openIdx}
+          count={rows.length}
+          starred={triage.isStarred(openRow)}
+          hidden={triage.isHidden(openRow)}
+          onClose={() => setOpenKey(null)}
+          onMove={moveOpen}
+          onStar={() => triage.toggleStar(openRow)}
+          onHide={() => {
+            // hiding removes the row from the list, so move on to its neighbour (or close)
+            const next = rows[openIdx + 1] ?? rows[openIdx - 1]
+            const willHide = !triage.isHidden(openRow)
+            triage.toggleHide(openRow)
+            if (willHide && !showHidden && !starredView) setOpenKey(next ? rowKey(next) : null)
+          }}
+          onSameNsn={() => {
+            setStarredView(false)
+            setOpenKey(null)
+            // the server matches a pasted NSN exactly and part numbers by word search
+            update({ ...DEFAULTS, q: openRow.nsn, includePast: true })
+          }}
+        />
+      )}
+
+      {!starredView && total > PAGE_SIZE && (
         <div className="pager">
           <span className="muted">
             {(f.page - 1) * PAGE_SIZE + 1}–{Math.min(f.page * PAGE_SIZE, total)} of {total.toLocaleString()}
