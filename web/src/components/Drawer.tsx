@@ -27,10 +27,29 @@ function Copy({ text }: { text: string }) {
 const longDate = (iso: string) =>
   iso ? new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : '—'
 
+interface Source { cage: string; part_no: string; company: string }
+
+/** Approved sources DLA lists for this NSN, fetched when the drawer opens on it. */
+function useSources(nsn13: string): { list: Source[] | null; failed: boolean } {
+  const [state, setState] = useState<{ nsn13: string; list: Source[] | null; failed: boolean }>({ nsn13: '', list: null, failed: false })
+  useEffect(() => {
+    if (!/^\d{13}$/.test(nsn13)) return
+    let live = true
+    fetch(`/api/nsn/${nsn13}/sources`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((list: Source[]) => { if (live) setState({ nsn13, list, failed: false }) })
+      .catch(() => { if (live) setState({ nsn13, list: null, failed: true }) })
+    return () => { live = false }
+  }, [nsn13])
+  // ignore a stale answer for the previous row while the new one loads
+  return state.nsn13 === nsn13 ? { list: state.list, failed: state.failed } : { list: null, failed: false }
+}
+
 export default function Drawer({
-  row, index, count, starred, hidden, onClose, onMove, onStar, onHide, onSameNsn,
+  row, myCage, index, count, starred, hidden, onClose, onMove, onStar, onHide, onSameNsn,
 }: {
   row: Rfq
+  myCage: string
   index: number
   count: number
   starred: boolean
@@ -54,6 +73,11 @@ export default function Drawer({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose, onMove, onStar])
+
+  const { list: sources, failed: sourcesFailed } = useSources(row.nsn13)
+  const [allSources, setAllSources] = useState(false)
+  const mine = myCage ? sources?.find((s) => s.cage === myCage) : undefined
+  const shownSources = sources ? (allSources ? sources : sources.slice(0, 8)) : []
 
   const d = row.days_left
   const dueCls = d == null ? '' : d <= 1 ? 'b-red' : d <= 5 ? 'b-amber' : 'b-green'
@@ -117,6 +141,43 @@ export default function Drawer({
             <dt>Buying office</dt>
             <dd className="mono">{row.office_prefix}</dd>
           </dl>
+
+          {/^\d{13}$/.test(row.nsn13) && (
+            <section className="dsources">
+              <h3>
+                Approved sources{sources ? ` (${sources.length})` : ''}
+                {mine && <span className="badge b-green" title={`CAGE ${myCage} is listed for this NSN`}>✓ you ({myCage})</span>}
+              </h3>
+              {sourcesFailed && <p className="muted">Couldn’t load the list.</p>}
+              {sources && sources.length === 0 && (
+                <p className="muted">None listed in DIBBS’s bulk files for this NSN.</p>
+              )}
+              {sources && sources.length > 0 && (
+                <>
+                  <table className="srcs">
+                    <tbody>
+                      {shownSources.map((s) => (
+                        <tr key={`${s.cage}|${s.part_no}`} className={s.cage === myCage ? 'me' : ''}>
+                          <td className="mono">{s.cage}</td>
+                          <td className="mono">{s.part_no || '—'}</td>
+                          <td className="muted">{s.company}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {sources.length > 8 && (
+                    <button type="button" className="linklike" onClick={() => setAllSources((v) => !v)}>
+                      {allSources ? 'Show fewer' : `Show all ${sources.length}`}
+                    </button>
+                  )}
+                  <p className="muted dnote">
+                    CAGE code and part number DLA has approved for this NSN, from the daily bulk file. A short list is a
+                    smaller field; an empty one means none was published.
+                  </p>
+                </>
+              )}
+            </section>
+          )}
 
           <div className="dactions">
             <button type="button" className={starred ? 'chip on' : 'chip'} onClick={onStar}>{starred ? '★ Starred' : '☆ Star'} <kbd>s</kbd></button>

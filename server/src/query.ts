@@ -19,6 +19,7 @@ export interface RfqQuery {
   includePast?: boolean;
   fastAward?: boolean;
   newSince?: string; // ISO time: only rows first seen after it
+  cage?: string; // only NSNs this CAGE code is an approved source for
   sort?: 'due' | 'issued' | 'qty' | 'nsn';
   dir?: 'asc' | 'desc';
   page?: number;
@@ -69,6 +70,7 @@ function build(p: RfqQuery) {
   if (off.length) { where.push(`office_prefix IN (${off.map(() => '?').join(',')})`); args.push(...off); }
   if (p.fastAward) where.push('fast_award = 1');
   if (p.newSince) { where.push('first_seen_at > ?'); args.push(p.newSince); }
+  if (p.cage) { where.push('nsn13 IN (SELECT nsn13 FROM approved_source WHERE cage = ?)'); args.push(p.cage); }
   if (p.techDocs === 'yes') where.push(`tech_docs <> 'None' AND tech_docs <> ''`);
   if (p.techDocs === 'no') where.push(`tech_docs = 'None'`); // bulk rows have no tech-docs info (''), so they match neither yes nor no
   if (p.qtyMin != null) { where.push('qty >= ?'); args.push(p.qtyMin); }
@@ -96,8 +98,18 @@ export function queryRfqs(p: RfqQuery) {
   return { items, total, page, pageSize };
 }
 
-/** Derived, display-only fields: official FSC title and days left to respond. */
+const sourceCountStmt = db.prepare('SELECT COUNT(*) c FROM approved_source WHERE nsn13 = ?');
+
+/** Approved sources DLA lists for an NSN (from the bulk files): CAGE code, part number, company when known. */
+export function sourcesFor(nsn13: string) {
+  return db
+    .prepare('SELECT cage, part_no, company FROM approved_source WHERE nsn13 = ? ORDER BY cage, part_no')
+    .all(nsn13) as { cage: string; part_no: string; company: string }[];
+}
+
+/** Derived, display-only fields: official FSC title, approved-source count and days left to respond. */
 function decorate(r: Record<string, unknown>, today: string) {
+  r.src_n = r.nsn13 ? (sourceCountStmt.get(r.nsn13) as { c: number }).c : 0;
   r.fsc_name = FSC_NAMES[r.fsc as string] ?? '';
   r.days_left = r.return_by
     ? Math.round((Date.parse((r.return_by as string) + 'T00:00:00Z') - Date.parse(today + 'T00:00:00Z')) / 86400000)
