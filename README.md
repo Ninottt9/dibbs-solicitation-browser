@@ -6,7 +6,7 @@ Stack: Node + TypeScript (Express, `better-sqlite3`, `cheerio`) and React + Vite
 
 ## Run it
 
-Needs Node 22+ and `curl` on the PATH (Windows 10+ and macOS ship with it).
+Needs Node 22+ and `curl` on the PATH (Windows 10+ and macOS ship with it). No compiler or Python is needed: `server/.npmrc` skips npm install scripts so the prebuilt SQLite binary is used.
 
 ```bash
 # 1. API + data (port 3000)
