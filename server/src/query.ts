@@ -10,6 +10,7 @@ export interface RfqQuery {
   qtyMin?: number;
   qtyMax?: number;
   includePast?: boolean;
+  fastAward?: boolean;
   sort?: 'due' | 'issued' | 'qty' | 'nsn';
   dir?: 'asc' | 'desc';
   page?: number;
@@ -58,6 +59,7 @@ function build(p: RfqQuery) {
   if (sa.length) { where.push(`set_aside IN (${sa.map(() => '?').join(',')})`); args.push(...sa); }
   const off = list(p.office);
   if (off.length) { where.push(`office_prefix IN (${off.map(() => '?').join(',')})`); args.push(...off); }
+  if (p.fastAward) where.push('fast_award = 1');
   if (p.techDocs === 'yes') where.push(`tech_docs <> 'None' AND tech_docs <> ''`);
   if (p.techDocs === 'no') where.push(`(tech_docs = 'None' OR tech_docs = '')`);
   if (p.qtyMin != null) { where.push('qty >= ?'); args.push(p.qtyMin); }

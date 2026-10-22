@@ -9,7 +9,8 @@ export interface Rfq {
   fsc: string; // first 4 digits of the NSN
   nomenclature: string;
   tech_docs: string;
-  set_aside: string;
+  set_aside: string; // raw DIBBS label; "" when none shown
+  fast_award: number; // 1 = "Fast Award Candidate" (micro-purchase may be awarded before the return date)
   status: string;
   pr_no: string;
   qty: number | null;
@@ -42,6 +43,8 @@ export function parseGrid(html: string): Rfq[] {
     if (!sol_display) return;
     const pr = (f('lblPr').html() ?? '').split(/<br\s*\/?>/i).map((x) => clean(cheerio.load(x).text()));
     const qtyM = (pr[1] ?? '').match(/QTY:\s*([\d,]+)/i);
+    // the solicitation cell carries several icons: set-aside type, "Fast Award Candidate", ...
+    const alts = solSpan.find('img').map((_, im) => clean($(im).attr('alt') ?? '')).get();
     const nsn13 = nsn.replace(/\D/g, '');
     const sol_no = sol_display.replace(/-/g, '');
     rows.push({
@@ -52,7 +55,8 @@ export function parseGrid(html: string): Rfq[] {
       fsc: /^\d{13}$/.test(nsn13) ? nsn13.slice(0, 4) : '',
       nomenclature: clean(f('lblNomenclature').text()),
       tech_docs: clean(f('lblTechnicalDocuments').text()),
-      set_aside: clean(solSpan.find('img').first().attr('alt') ?? ''),
+      set_aside: alts.find((a) => /set[- ]aside/i.test(a)) ?? '',
+      fast_award: alts.some((a) => /fast award/i.test(a)) ? 1 : 0,
       status: clean(f('lblStatus').children('span').first().text() || f('lblStatus').text()),
       pr_no: pr[0] ?? '',
       qty: qtyM ? Number(qtyM[1].replace(/,/g, '')) : null,
