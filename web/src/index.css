@@ -82,3 +82,32 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .pill { display: inline-flex; align-items: center; gap: 4px; background: var(--accent-bg); color: var(--accent); border-radius: 999px; padding: 2px 4px 2px 10px; font-size: 12px; max-width: 360px; white-space: nowrap; }
 .pill button { border: 0; background: none; color: inherit; padding: 0 6px; font-size: 15px; line-height: 1; cursor: pointer; border-radius: 999px; }
 .pill button:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+
+/* detail drawer */
+.backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 30; }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 440px; max-width: 100vw; background: var(--panel); border-left: 1px solid var(--line); z-index: 31; display: flex; flex-direction: column; box-shadow: -10px 0 30px rgba(0,0,0,.25); }
+.dhead { display: flex; justify-content: space-between; gap: 12px; padding: 16px; border-bottom: 1px solid var(--line); }
+.dnomen { margin-top: 4px; font-size: 15px; font-weight: 600; }
+.dbody { padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+.dnav { display: flex; align-items: center; justify-content: space-between; font-size: 12px; }
+.dnav button { padding: 3px 10px; }
+.dsum { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.dactions { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn { display: inline-block; border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; color: var(--text); }
+.btn:hover { border-color: var(--accent); text-decoration: none; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.dgrid { display: grid; grid-template-columns: 120px 1fr; gap: 8px 12px; margin: 0; }
+.dgrid dt { color: var(--muted); }
+.dgrid dd { margin: 0; word-break: break-word; }
+.dnote { font-size: 12px; margin: 0; }
+kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 11px; color: var(--muted); }
+
+/* triage */
+td.star, th.star { width: 28px; padding-right: 0; }
+.iconbtn { border: 0; background: none; padding: 2px 4px; cursor: pointer; color: var(--muted); font-size: 16px; line-height: 1; }
+.iconbtn:hover { color: var(--text); }
+.iconbtn.on { color: #e0a800; }
+tbody tr.clickable { cursor: pointer; }
+tbody tr.hiddenrow { opacity: .45; }
+tbody tr.selected { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.notice { background: var(--accent-bg); color: var(--accent); border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
