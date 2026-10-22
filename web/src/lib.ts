@@ -2,7 +2,7 @@ export interface Rfq {
   sol_no: string; sol_display: string; nsn: string; fsc: string; fsc_name: string; nomenclature: string
   tech_docs: string; set_aside: string; status: string; pr_no: string; qty: number | null
   issue_date: string; return_by: string; office_prefix: string
-  pdf_url: string; package_url: string; nsn_url: string; quote_url: string
+  pdf_url: string; package_url: string; nsn_url: string; quote_url: string; nsn13: string; src_n: number
   days_left: number | null; fast_award: number; source: string; post_date: string | null; first_seen_at: string
 }
 export interface Opt { value: string; n: number; name?: string }
@@ -16,13 +16,13 @@ export interface Meta {
 }
 export interface Filters {
   q: string; fsc: string; setAside: string; office: string; techDocs: string
-  dueWithinDays: string; qtyMin: string; includePast: boolean; fastAward: boolean; onlyNew: boolean
+  dueWithinDays: string; qtyMin: string; includePast: boolean; fastAward: boolean; onlyNew: boolean; cage: string
   sort: string; dir: string; page: number
 }
 
 export const DEFAULTS: Filters = {
   q: '', fsc: '', setAside: '', office: '', techDocs: '', dueWithinDays: '', qtyMin: '',
-  includePast: false, fastAward: false, onlyNew: false, sort: 'due', dir: 'asc', page: 1,
+  cage: '', includePast: false, fastAward: false, onlyNew: false, sort: 'due', dir: 'asc', page: 1,
 }
 export const PAGE_SIZE = 50
 
@@ -64,6 +64,7 @@ export function filterQuery(f: Filters, baseline?: string | null) {
   if (f.includePast) p.set('includePast', '1')
   if (f.fastAward) p.set('fastAward', '1')
   if (f.onlyNew && baseline) p.set('newSince', baseline)
+  if (f.cage.length === 5) p.set('cage', f.cage)
   p.set('sort', f.sort)
   p.set('dir', f.dir)
   return p

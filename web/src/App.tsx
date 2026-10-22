@@ -30,6 +30,17 @@ export default function App() {
   const [error, setError] = useState('')
   const reqId = useRef(0)
   const triage = useTriage()
+  // your CAGE code, remembered in this browser so the "Approved for me" chip survives reloads
+  const [myCage, setMyCage] = useState<string>(() => {
+    try { return localStorage.getItem('dibbs.cage.v1') ?? '' } catch { return '' }
+  })
+  const rememberCage = (v: string) => {
+    setMyCage(v)
+    try { localStorage.setItem('dibbs.cage.v1', v) } catch { /* not persisted */ }
+  }
+  useEffect(() => {
+    if (f.cage.length === 5 && f.cage !== myCage) rememberCage(f.cage)
+  }, [f.cage, myCage])
   // when you were last here, pinned for this tab; null on a first visit (nothing is "new" yet)
   const [baseline, setBaseline] = useState<string | null>(initBaseline)
   useEffect(() => {
@@ -228,6 +239,15 @@ export default function App() {
         >
           ⚡ Fast award
         </button>
+        {myCage && (
+          <button
+            className={`chip ${f.cage === myCage ? 'on' : ''}`}
+            title={`Only RFQs for NSNs that DLA lists CAGE ${myCage} as an approved source for`}
+            onClick={() => update({ cage: f.cage === myCage ? '' : myCage })}
+          >
+            ✓ Approved for me ({myCage})
+          </button>
+        )}
         {baseline && (meta?.newCount ?? 0) > 0 && (
           <>
             <button
@@ -289,6 +309,20 @@ export default function App() {
             Qty min{' '}
             <input type="number" min={0} value={f.qtyMin} onChange={(e) => update({ qtyMin: e.target.value })} />
           </label>
+          <label className="muted" title="Your 5-character CAGE code: show only RFQs for parts you are an approved source for">
+            My CAGE{' '}
+            <input
+              className="cage"
+              value={f.cage}
+              maxLength={5}
+              placeholder="e.g. 75Q65"
+              onChange={(e) => {
+                const v = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '')
+                update({ cage: v })
+                if (v.length === 5) rememberCage(v)
+              }}
+            />
+          </label>
           <label className="muted">
             <input type="checkbox" checked={f.includePast} onChange={(e) => update({ includePast: e.target.checked })} /> Include closed / past due
           </label>
@@ -349,6 +383,7 @@ export default function App() {
               <th className="num sortable" onClick={() => sortBy('qty')}>Qty{arrow('qty')}</th>
               <th>Set-aside</th>
               <th>Tech docs</th>
+              <th className="num" title="Approved sources listed for this NSN">Src</th>
               <th className="sortable" onClick={() => sortBy('issued')}>Issued{arrow('issued')}</th>
               <th className="sortable" onClick={() => sortBy('due')}>Due{arrow('due')}</th>
               <th>DIBBS</th>
@@ -358,7 +393,7 @@ export default function App() {
             {!data && !starredView &&
               Array.from({ length: 10 }, (_, i) => (
                 <tr key={i} className="skel">
-                  {Array.from({ length: 11 }, (_, j) => <td key={j} />)}
+                  {Array.from({ length: 12 }, (_, j) => <td key={j} />)}
                 </tr>
               ))}
             {rows.map((r) => (
@@ -404,6 +439,9 @@ export default function App() {
                     : r.status === '' ? <span className="muted" title="Not in the bulk file; open on DIBBS to check">?</span>
                     : <span className="muted">None</span>}
                 </td>
+                <td className="num" title="Approved sources DLA lists for this NSN in the bulk files (open the row to see them)">
+                  {r.src_n > 0 ? r.src_n : <span className="muted">—</span>}
+                </td>
                 <td>
                   {r.issue_date
                     ? fmtDate(r.issue_date)
@@ -444,6 +482,7 @@ export default function App() {
       {openRow && (
         <Drawer
           row={openRow}
+          myCage={f.cage.length === 5 ? f.cage : myCage}
           index={openIdx}
           count={rows.length}
           starred={triage.isStarred(openRow)}

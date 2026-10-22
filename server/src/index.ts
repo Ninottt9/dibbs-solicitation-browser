@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { CSV_BOM, RFQ_COLUMNS, csvLine } from './csv.js';
 import { ingestPhase, isIngesting, runIngest, runRefresh } from './ingest.js';
 import { autoRefreshInfo, startScheduler } from './scheduler.js';
-import { iterateRfqs, meta, queryRfqs, todayET, type RfqQuery } from './query.js';
+import { iterateRfqs, meta, queryRfqs, sourcesFor, todayET, type RfqQuery } from './query.js';
 import { listDates } from './scrape.js';
 
 const app = express();
@@ -25,6 +25,7 @@ function parseQuery(q: Request['query']): RfqQuery {
     includePast: q.includePast === '1',
     fastAward: q.fastAward === '1',
     newSince: isoTime(q.newSince),
+    cage: typeof q.cage === 'string' && /^[A-Za-z0-9]{5}$/.test(q.cage) ? q.cage.toUpperCase() : undefined,
     sort: ['due', 'issued', 'qty', 'nsn'].includes(String(q.sort)) ? (q.sort as RfqQuery['sort']) : 'due',
     dir: q.dir === 'desc' ? 'desc' : 'asc',
     page: num(q.page), pageSize: num(q.pageSize),
@@ -54,6 +55,13 @@ app.get('/api/rfqs/export.csv', (req, res) => {
 });
 
 app.get('/api/meta', (_req, res) => res.json({ ...meta(isoTime(_req.query.since)), ingesting: isIngesting(), phase: ingestPhase(), autoRefresh: autoRefreshInfo() }));
+
+// Approved sources DLA lists for one NSN (13 digits), for the detail drawer.
+app.get('/api/nsn/:nsn13/sources', (req, res) => {
+  const n = req.params.nsn13;
+  if (!/^\d{13}$/.test(n)) return res.status(400).json({ error: 'nsn13 must be 13 digits' });
+  res.json(sourcesFor(n));
+});
 
 app.get('/api/dates', async (_req, res) => {
   try {

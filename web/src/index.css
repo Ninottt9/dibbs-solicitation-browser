@@ -120,3 +120,10 @@ tbody tr.selected { background: color-mix(in srgb, var(--accent) 10%, transparen
 .autor.warn { color: var(--amber); }
 .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 40; background: var(--text); color: var(--bg); border-radius: 10px; padding: 10px 14px; box-shadow: 0 8px 24px rgba(0,0,0,.3); display: flex; gap: 12px; align-items: center; }
 .toast .linklike { color: inherit; opacity: .7; font-size: 14px; }
+
+/* approved sources */
+input.cage { width: 92px; text-transform: uppercase; font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; }
+.dsources h3 { margin: 0 0 6px; font-size: 14px; display: flex; gap: 8px; align-items: center; }
+.srcs { width: 100%; min-width: 0; font-size: 13px; }
+.srcs td { padding: 3px 6px; border-bottom: 1px solid var(--line); }
+.srcs tr.me td { background: var(--green-bg); }

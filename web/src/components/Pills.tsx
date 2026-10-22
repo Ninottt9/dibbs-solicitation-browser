@@ -37,6 +37,7 @@ export default function Pills({
   if (f.techDocs) pills.push({ key: 'docs', label: f.techDocs === 'yes' ? 'Has tech docs' : 'No tech docs', clear: { techDocs: '' } })
   if (f.dueWithinDays) pills.push({ key: 'due', label: `Due within ${f.dueWithinDays}d`, clear: { dueWithinDays: '' } })
   if (f.qtyMin) pills.push({ key: 'qty', label: `Qty ≥ ${f.qtyMin}`, clear: { qtyMin: '' } })
+  if (f.cage.length === 5) pills.push({ key: 'cage', label: `Approved source: ${f.cage}`, clear: { cage: '' } })
   if (f.onlyNew) pills.push({ key: 'new', label: '🆕 New since last visit', clear: { onlyNew: false } })
   if (f.fastAward) pills.push({ key: 'fast', label: '⚡ Fast award', clear: { fastAward: false } })
   if (f.includePast) pills.push({ key: 'past', label: 'Incl. closed / past due', clear: { includePast: DEFAULTS.includePast } })

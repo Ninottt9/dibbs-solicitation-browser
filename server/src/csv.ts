@@ -26,6 +26,7 @@ export const RFQ_COLUMNS: { header: string; get: (r: Record<string, unknown>) =>
   { header: 'Issued', get: (r) => r.issue_date },
   { header: 'Return by', get: (r) => r.return_by },
   { header: 'Days left', get: (r) => r.days_left },
+  { header: 'Approved sources listed', get: (r) => r.src_n },
   { header: 'Buying office', get: (r) => r.office_prefix },
   { header: 'DIBBS package view', get: (r) => r.package_url },
   { header: 'RFQ PDF', get: (r) => r.pdf_url },

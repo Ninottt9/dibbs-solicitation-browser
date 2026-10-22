@@ -18,7 +18,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * "Request Rejected" but accepts curl's, so curl is the transport. It also gives us the cookie
  * jar, redirect following and a hard timeout.
  */
-async function http(url: string, body?: URLSearchParams): Promise<{ html: string; url: string }> {
+async function httpRaw(url: string, body?: URLSearchParams): Promise<{ buf: Buffer; url: string }> {
   const wait = MIN_GAP_MS - (Date.now() - last);
   if (wait > 0) await sleep(wait);
   last = Date.now();
@@ -38,7 +38,12 @@ async function http(url: string, body?: URLSearchParams): Promise<{ html: string
     if (body) p.stdin!.end(body.toString());
   });
   const nl = out.lastIndexOf(10);
-  return { html: new TextDecoder('iso-8859-1').decode(out.subarray(0, nl)), url: out.subarray(nl + 1).toString() };
+  return { buf: out.subarray(0, nl), url: out.subarray(nl + 1).toString() };
+}
+
+async function http(url: string, body?: URLSearchParams): Promise<{ html: string; url: string }> {
+  const r = await httpRaw(url, body);
+  return { html: new TextDecoder('iso-8859-1').decode(r.buf), url: r.url };
 }
 
 export function hiddenFields($: cheerio.CheerioAPI): URLSearchParams {
@@ -76,4 +81,19 @@ export async function post(url: string, body: URLSearchParams) {
   const r = await http(url, body);
   if (isConsent(r.url, r.html)) throw new Error('SESSION_LOST');
   return r;
+}
+
+/** GET a binary file (zip etc.), clearing the consent wall on the download host if it appears. */
+export async function getBuffer(url: string): Promise<Buffer> {
+  let r = await httpRaw(url);
+  const head = r.buf.subarray(0, 4000).toString('latin1');
+  if (isConsent(r.url, head)) {
+    await consent(head, r.url);
+    r = await httpRaw(url);
+  }
+  // a firewall rejection or an error page comes back as a tiny HTML document, not a file
+  if (/^\s*<(html|!doctype)/i.test(r.buf.subarray(0, 200).toString('latin1'))) {
+    throw new Error(`download returned HTML instead of a file: ${url}`);
+  }
+  return r.buf;
 }
