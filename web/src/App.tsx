@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import FscPicker from './components/FscPicker'
 import Drawer from './components/Drawer'
 import Pills from './components/Pills'
+import { downloadRfqCsv } from './csv'
 import { useTriage } from './triage'
 import {
   DEFAULTS, PAGE_SIZE, filterQuery, fmtDate, fromUrl, isSmallBizAside, rowKey, shortAside, toParams,
@@ -234,6 +235,24 @@ export default function App() {
               ? `${rows.length} starred`
               : loading && !data ? 'Loading…' : `${total.toLocaleString()} result${total === 1 ? '' : 's'}`}
           </span>
+          {starredView ? (
+            <button
+              disabled={rows.length === 0}
+              onClick={() => downloadRfqCsv(rows, `dibbs-starred-${meta?.today ?? 'rfqs'}.csv`)}
+              title="Download your starred RFQs as a spreadsheet-ready CSV"
+            >
+              Export CSV
+            </button>
+          ) : (
+            <a
+              className={`btn ${total === 0 ? 'disabled' : ''}`}
+              href={total === 0 ? undefined : `/api/rfqs/export.csv?${filterQuery(f).toString()}`}
+              download
+              title={`Download all ${total.toLocaleString()} matching RFQs (not just this page) as a spreadsheet-ready CSV. Hidden rows are included.`}
+            >
+              Export CSV
+            </a>
+          )}
         </div>
       </div>
 
