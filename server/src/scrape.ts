@@ -99,7 +99,8 @@ export async function ingestDay(
     seen += rows.length;
     onPage(rows, page, total);
     const next = page + 1;
-    if (!rows.length || page >= maxPages || !r.html.includes(`Page$${next}'`)) break;
+    const hasNext = r.html.includes(`Page$${next}&#39;`) || r.html.includes(`Page$${next}'`);
+    if (!rows.length || page >= maxPages || !hasNext) break;
     const body = hiddenFields(cheerio.load(r.html));
     body.set('__EVENTTARGET', 'ctl00$cph1$grdRfqSearch');
     body.set('__EVENTARGUMENT', `Page$${next}`);
