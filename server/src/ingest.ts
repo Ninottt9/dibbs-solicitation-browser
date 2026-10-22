@@ -1,5 +1,5 @@
-import { fetchIndex, listBulkDays } from './bulk.js';
-import { db, insertBulkRows, upsertRows } from './db.js';
+import { fetchApprovedSources, fetchIndex, listBulkDays } from './bulk.js';
+import { db, insertApprovedSources, insertBulkRows, upsertRows } from './db.js';
 import { ingestDay, listDates } from './scrape.js';
 
 type Log = (m: string) => void;
@@ -21,7 +21,7 @@ async function withLock<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-function startRun(mode: 'site' | 'bulk', date: string) {
+function startRun(mode: 'site' | 'bulk' | 'approved', date: string) {
   return db
     .prepare('INSERT INTO ingest_run (date, started_at, status, mode) VALUES (?, ?, ?, ?)')
     .run(date, new Date().toISOString(), 'running', mode).lastInsertRowid;
@@ -60,27 +60,46 @@ async function scrapeDay(date: string | undefined, log: Log) {
  * are skipped (a published file never changes), so repeated refreshes only fetch what is new.
  */
 async function backfillBulk(log: Log, maxDays = 60) {
-  const done = new Set(
-    (db.prepare("SELECT date FROM ingest_run WHERE mode='bulk' AND status='ok'").all() as { date: string }[]).map((r) => r.date),
-  );
-  const days = (await listBulkDays()).slice(0, maxDays).filter((d) => !done.has(d.date));
-  let added = 0, failed = 0;
+  const doneDates = (mode: string) =>
+    new Set((db.prepare("SELECT date FROM ingest_run WHERE mode=? AND status='ok'").all(mode) as { date: string }[]).map((r) => r.date));
+  const doneIndex = doneDates('bulk');
+  const doneSources = doneDates('approved');
+  const days = (await listBulkDays()).slice(0, maxDays).filter((d) => !doneIndex.has(d.date) || !doneSources.has(d.date));
+  let added = 0, sources = 0, failed = 0;
   for (const [i, day] of days.entries()) {
-    const runId = startRun('bulk', day.date);
-    try {
-      phase = `Loading bulk file ${i + 1}/${days.length} (${day.date})`;
-      const rows = await fetchIndex(day);
-      const n = insertBulkRows(rows);
-      added += n;
-      finishRun(runId, { pages: 1, rows: rows.length, expected: rows.length, status: 'ok' });
-      log(`bulk ${day.date}: ${rows.length} rows, ${n} new`);
-    } catch (e) {
-      failed++;
-      finishRun(runId, { pages: 0, rows: 0, expected: 0, status: 'error', error: String(e) });
-      log(`bulk ${day.date} failed: ${e}`);
+    const label = `${i + 1}/${days.length} (${day.date})`;
+    if (!doneIndex.has(day.date)) {
+      const runId = startRun('bulk', day.date);
+      try {
+        phase = `Loading RFQ file ${label}`;
+        const rows = await fetchIndex(day);
+        const n = insertBulkRows(rows);
+        added += n;
+        finishRun(runId, { pages: 1, rows: rows.length, expected: rows.length, status: 'ok' });
+        log(`bulk ${day.date}: ${rows.length} rows, ${n} new`);
+      } catch (e) {
+        failed++;
+        finishRun(runId, { pages: 0, rows: 0, expected: 0, status: 'error', error: String(e) });
+        log(`bulk ${day.date} failed: ${e}`);
+      }
+    }
+    if (!doneSources.has(day.date)) {
+      const runId = startRun('approved', day.date);
+      try {
+        phase = `Loading approved sources ${label}`;
+        const rows = await fetchApprovedSources(day);
+        const n = insertApprovedSources(rows, day.date);
+        sources += n;
+        finishRun(runId, { pages: 1, rows: rows.length, expected: rows.length, status: 'ok' });
+        log(`approved sources ${day.date}: ${rows.length} lines, ${n} new`);
+      } catch (e) {
+        failed++;
+        finishRun(runId, { pages: 0, rows: 0, expected: 0, status: 'error', error: String(e) });
+        log(`approved sources ${day.date} failed: ${e}`);
+      }
     }
   }
-  return { days: days.length, added, failed };
+  return { days: days.length, added, sources, failed };
 }
 
 /** Scrape one day only (CLI `--date`, and the API's `?date=`). */

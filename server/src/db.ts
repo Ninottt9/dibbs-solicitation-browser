@@ -73,3 +73,26 @@ export const insertBulkRows = db.transaction((rows: (Rfq & { post_date: string }
   for (const r of rows) bulkStmt.run({ ...r, now });
   return (countStmt.get() as { c: number }).c - before;
 });
+
+// ---- approved sources (from the bulk files) ----
+db.exec(`
+CREATE TABLE IF NOT EXISTS approved_source (
+  nsn13 TEXT NOT NULL, cage TEXT NOT NULL, part_no TEXT NOT NULL DEFAULT '', company TEXT NOT NULL DEFAULT '',
+  post_date TEXT, PRIMARY KEY (nsn13, cage, part_no)
+);
+CREATE INDEX IF NOT EXISTS ix_as_cage ON approved_source(cage);
+`);
+
+const sourceStmt = db.prepare(`
+INSERT INTO approved_source (nsn13, cage, part_no, company, post_date) VALUES (@nsn13, @cage, @part_no, @company, @post_date)
+ON CONFLICT(nsn13, cage, part_no) DO UPDATE SET company = CASE WHEN excluded.company <> '' THEN excluded.company ELSE company END`);
+const sourceCount = db.prepare('SELECT COUNT(*) c FROM approved_source');
+
+/** Returns how many (NSN, CAGE, part) combinations were new. */
+export const insertApprovedSources = db.transaction(
+  (rows: { nsn13: string; cage: string; part_no: string; company: string }[], post_date: string) => {
+    const before = (sourceCount.get() as { c: number }).c;
+    for (const r of rows) sourceStmt.run({ ...r, post_date });
+    return (sourceCount.get() as { c: number }).c - before;
+  },
+);

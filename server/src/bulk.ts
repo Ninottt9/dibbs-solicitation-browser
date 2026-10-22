@@ -1,4 +1,5 @@
-import { BASE, get } from './client.js';
+import { unzipSync } from 'fflate';
+import { BASE, get, getBuffer } from './client.js';
 import type { Rfq } from './scrape.js';
 
 /**
@@ -111,4 +112,56 @@ export async function fetchIndex(day: BulkDay): Promise<BulkRfq[]> {
   const r = await get(day.indexUrl);
   if (/<html/i.test(r.html.slice(0, 200))) throw new Error(`unexpected HTML instead of index file for ${day.date}`);
   return parseIndex(r.html, day.date);
+}
+
+// ---- approved sources -------------------------------------------------------------------------
+// Each day's batch-quote zip (bq<yymmdd>.zip) also holds as<yymmdd>.txt: for each NSN, the sources DLA
+// has approved (CAGE code + part number, company name when it has one). That is the competition
+// and "am I eligible" signal, without opening a single PDF.
+
+export interface ApprovedSource {
+  nsn13: string;
+  cage: string;
+  part_no: string;
+  company: string;
+}
+
+/** One CSV line with double-quoted fields (and "" escapes). */
+function csvFields(line: string): string[] {
+  const out: string[] = [];
+  let cur = '';
+  let q = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (q) {
+      if (c === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+      else if (c === '"') q = false;
+      else cur += c;
+    } else if (c === '"') q = true;
+    else if (c === ',') { out.push(cur); cur = ''; }
+    else cur += c;
+  }
+  out.push(cur);
+  return out;
+}
+
+/** Pure: as-file text -> rows. Lines without an NSN or CAGE are skipped. */
+export function parseApproved(text: string): ApprovedSource[] {
+  const rows: ApprovedSource[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const [nsn, cage, part, company] = csvFields(line).map((s) => s.trim());
+    const nsn13 = (nsn ?? '').replace(/\D/g, '');
+    if (!nsn13 || !cage) continue;
+    rows.push({ nsn13, cage: cage.toUpperCase(), part_no: part ?? '', company: company ?? '' });
+  }
+  return rows;
+}
+
+export async function fetchApprovedSources(day: BulkDay): Promise<ApprovedSource[]> {
+  const zip = await getBuffer(day.bqUrl);
+  const files = unzipSync(new Uint8Array(zip), { filter: (f) => /(^|\/)as\d{6}\.txt$/i.test(f.name) });
+  const file = Object.values(files)[0];
+  if (!file) throw new Error(`no approved-sources file inside ${day.bqUrl}`);
+  return parseApproved(new TextDecoder('iso-8859-1').decode(file));
 }
