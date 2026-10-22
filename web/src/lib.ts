@@ -3,25 +3,25 @@ export interface Rfq {
   tech_docs: string; set_aside: string; status: string; pr_no: string; qty: number | null
   issue_date: string; return_by: string; office_prefix: string
   pdf_url: string; package_url: string; nsn_url: string; quote_url: string
-  days_left: number | null; fast_award: number; source: string; post_date: string | null
+  days_left: number | null; fast_award: number; source: string; post_date: string | null; first_seen_at: string
 }
 export interface Opt { value: string; n: number; name?: string }
 export interface Meta {
   today: string; fscs: Opt[]; setAsides: Opt[]; offices: Opt[]
   totals: { total: number; open: number; latestIssue: string }
   lastRun: { finished_at: string; date: string; rows: number; expected: number; status: string } | null
-  ingesting: boolean; phase: string
+  ingesting: boolean; phase: string; newCount: number
   coverage: { from: string | null; to: string | null; bulkRows: number }
 }
 export interface Filters {
   q: string; fsc: string; setAside: string; office: string; techDocs: string
-  dueWithinDays: string; qtyMin: string; includePast: boolean; fastAward: boolean
+  dueWithinDays: string; qtyMin: string; includePast: boolean; fastAward: boolean; onlyNew: boolean
   sort: string; dir: string; page: number
 }
 
 export const DEFAULTS: Filters = {
   q: '', fsc: '', setAside: '', office: '', techDocs: '', dueWithinDays: '', qtyMin: '',
-  includePast: false, fastAward: false, sort: 'due', dir: 'asc', page: 1,
+  includePast: false, fastAward: false, onlyNew: false, sort: 'due', dir: 'asc', page: 1,
 }
 export const PAGE_SIZE = 50
 
@@ -33,7 +33,7 @@ export function fromUrl(): Filters {
   for (const k of Object.keys(DEFAULTS) as (keyof Filters)[]) {
     const v = p.get(k)
     if (v == null) continue
-    if (k === 'includePast' || k === 'fastAward') f[k] = v === '1'
+    if (k === 'includePast' || k === 'fastAward' || k === 'onlyNew') f[k] = v === '1'
     else if (k === 'page') f.page = Math.max(1, Number(v) || 1)
     else (f[k] as string) = v
   }
@@ -51,7 +51,7 @@ export function toParams(f: Filters) {
 }
 
 /** The filter part of the query string, shared by the table and the CSV export. */
-export function filterQuery(f: Filters) {
+export function filterQuery(f: Filters, baseline?: string | null) {
   const p = new URLSearchParams()
   if (f.q) p.set('q', f.q)
   if (f.fsc) p.set('fsc', f.fsc)
@@ -62,6 +62,7 @@ export function filterQuery(f: Filters) {
   if (f.qtyMin) p.set('qtyMin', f.qtyMin)
   if (f.includePast) p.set('includePast', '1')
   if (f.fastAward) p.set('fastAward', '1')
+  if (f.onlyNew && baseline) p.set('newSince', baseline)
   p.set('sort', f.sort)
   p.set('dir', f.dir)
   return p

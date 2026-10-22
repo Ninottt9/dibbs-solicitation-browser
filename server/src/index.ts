@@ -12,6 +12,8 @@ app.use(cors());
 
 const num = (v: unknown) => (v === undefined || v === '' || Number.isNaN(Number(v)) ? undefined : Number(v));
 const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
+const isoTime = (v: unknown) =>
+  typeof v === 'string' && /^\d{4}-\d\d-\d\dT[\d:.]+Z$/.test(v) ? v : undefined;
 
 /** Same filter vocabulary for the table and the CSV export. */
 function parseQuery(q: Request['query']): RfqQuery {
@@ -21,6 +23,7 @@ function parseQuery(q: Request['query']): RfqQuery {
     dueWithinDays: num(q.dueWithinDays), qtyMin: num(q.qtyMin), qtyMax: num(q.qtyMax),
     includePast: q.includePast === '1',
     fastAward: q.fastAward === '1',
+    newSince: isoTime(q.newSince),
     sort: ['due', 'issued', 'qty', 'nsn'].includes(String(q.sort)) ? (q.sort as RfqQuery['sort']) : 'due',
     dir: q.dir === 'desc' ? 'desc' : 'asc',
     page: num(q.page), pageSize: num(q.pageSize),
@@ -49,7 +52,7 @@ app.get('/api/rfqs/export.csv', (req, res) => {
   }
 });
 
-app.get('/api/meta', (_req, res) => res.json({ ...meta(), ingesting: isIngesting(), phase: ingestPhase() }));
+app.get('/api/meta', (_req, res) => res.json({ ...meta(isoTime(_req.query.since)), ingesting: isIngesting(), phase: ingestPhase() }));
 
 app.get('/api/dates', async (_req, res) => {
   try {
