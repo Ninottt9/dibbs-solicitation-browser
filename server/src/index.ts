@@ -19,6 +19,7 @@ app.get('/api/rfqs', (req, res) => {
     techDocs: q.techDocs === 'yes' || q.techDocs === 'no' ? q.techDocs : undefined,
     dueWithinDays: num(q.dueWithinDays), qtyMin: num(q.qtyMin), qtyMax: num(q.qtyMax),
     includePast: q.includePast === '1',
+    fastAward: q.fastAward === '1',
     sort: ['due', 'issued', 'qty', 'nsn'].includes(String(q.sort)) ? (q.sort as RfqQuery['sort']) : 'due',
     dir: q.dir === 'desc' ? 'desc' : 'asc',
     page: num(q.page), pageSize: num(q.pageSize),

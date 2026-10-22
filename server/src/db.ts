@@ -18,6 +18,9 @@ CREATE TABLE IF NOT EXISTS rfq (
   PRIMARY KEY (sol_no, nsn, pr_no)
 );
 CREATE INDEX IF NOT EXISTS ix_rfq_return_by ON rfq(return_by);
+`);
+try { db.exec('ALTER TABLE rfq ADD COLUMN fast_award INTEGER NOT NULL DEFAULT 0'); } catch { /* column exists */ }
+db.exec(`
 CREATE INDEX IF NOT EXISTS ix_rfq_fsc ON rfq(fsc);
 CREATE INDEX IF NOT EXISTS ix_rfq_nsn13 ON rfq(nsn13);
 CREATE INDEX IF NOT EXISTS ix_rfq_issue ON rfq(issue_date);
@@ -29,11 +32,11 @@ CREATE TABLE IF NOT EXISTS ingest_run (
 
 const upsertStmt = db.prepare(`
 INSERT INTO rfq (sol_no, sol_display, nsn, nsn13, fsc, nomenclature, tech_docs, set_aside, status, pr_no, qty,
-  issue_date, return_by, office_prefix, pdf_url, package_url, nsn_url, quote_url, first_seen_at, last_seen_at)
+  issue_date, return_by, office_prefix, pdf_url, package_url, nsn_url, quote_url, fast_award, first_seen_at, last_seen_at)
 VALUES (@sol_no, @sol_display, @nsn, @nsn13, @fsc, @nomenclature, @tech_docs, @set_aside, @status, @pr_no, @qty,
-  @issue_date, @return_by, @office_prefix, @pdf_url, @package_url, @nsn_url, @quote_url, @now, @now)
+  @issue_date, @return_by, @office_prefix, @pdf_url, @package_url, @nsn_url, @quote_url, @fast_award, @now, @now)
 ON CONFLICT(sol_no, nsn, pr_no) DO UPDATE SET
-  status=excluded.status, return_by=excluded.return_by, qty=excluded.qty, tech_docs=excluded.tech_docs,
+  fast_award=excluded.fast_award, status=excluded.status, return_by=excluded.return_by, qty=excluded.qty, tech_docs=excluded.tech_docs,
   set_aside=excluded.set_aside, last_seen_at=excluded.last_seen_at`);
 
 export const upsertRows = db.transaction((rows: Rfq[]) => {

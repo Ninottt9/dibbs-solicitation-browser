@@ -4,7 +4,7 @@ interface Rfq {
   sol_no: string; sol_display: string; nsn: string; fsc: string; nomenclature: string
   tech_docs: string; set_aside: string; status: string; pr_no: string; qty: number | null
   issue_date: string; return_by: string; office_prefix: string
-  pdf_url: string; package_url: string; nsn_url: string; quote_url: string; days_left: number | null
+  pdf_url: string; package_url: string; nsn_url: string; quote_url: string; days_left: number | null; fast_award: number
 }
 interface Opt { value: string; n: number; sample?: string }
 interface Meta {
@@ -15,12 +15,12 @@ interface Meta {
 }
 interface Filters {
   q: string; fsc: string; setAside: string; office: string; techDocs: string
-  dueWithinDays: string; qtyMin: string; includePast: boolean; sort: string; dir: string; page: number
+  dueWithinDays: string; qtyMin: string; includePast: boolean; fastAward: boolean; sort: string; dir: string; page: number
 }
 
 const DEFAULTS: Filters = {
   q: '', fsc: '', setAside: '', office: '', techDocs: '', dueWithinDays: '', qtyMin: '',
-  includePast: false, sort: 'due', dir: 'asc', page: 1,
+  includePast: false, fastAward: false, sort: 'due', dir: 'asc', page: 1,
 }
 const PAGE_SIZE = 50
 
@@ -30,7 +30,7 @@ function fromUrl(): Filters {
   for (const k of Object.keys(DEFAULTS) as (keyof Filters)[]) {
     const v = p.get(k)
     if (v == null) continue
-    if (k === 'includePast') f.includePast = v === '1'
+    if (k === 'includePast' || k === 'fastAward') f[k] = v === '1'
     else if (k === 'page') f.page = Math.max(1, Number(v) || 1)
     else (f[k] as string) = v
   }
@@ -126,6 +126,7 @@ export default function App() {
     if (f.dueWithinDays) p.set('dueWithinDays', f.dueWithinDays)
     if (f.qtyMin) p.set('qtyMin', f.qtyMin)
     if (f.includePast) p.set('includePast', '1')
+    if (f.fastAward) p.set('fastAward', '1')
     p.set('sort', f.sort); p.set('dir', f.dir)
     p.set('page', String(f.page)); p.set('pageSize', String(PAGE_SIZE))
     return p.toString()
@@ -206,6 +207,13 @@ export default function App() {
         </button>
         <button className={`chip ${chipOn.qty ? 'on' : ''}`} onClick={() => update({ qtyMin: chipOn.qty ? '' : '10' })}>
           Qty ≥ 10
+        </button>
+        <button
+          className={`chip ${f.fastAward ? 'on' : ''}`}
+          title="Micro-purchase: quotes may be awarded before the return date, so be quick"
+          onClick={() => update({ fastAward: !f.fastAward })}
+        >
+          ⚡ Fast award
         </button>
 
         <div className="row2">
@@ -297,8 +305,9 @@ export default function App() {
                   <a href={r.package_url} target="_blank" rel="noreferrer" title="Open this solicitation on DIBBS (Package View)">
                     {r.sol_display}
                   </a>
+                  {r.fast_award ? <span className="badge b-amber" title="Fast Award Candidate: micro-purchase quotes may be awarded before the return date"> ⚡</span> : null}
                 </td>
-                <td className="mono">
+                <td className="mono nsn">
                   <a href={r.nsn_url} target="_blank" rel="noreferrer" title="NSN history on DIBBS">{r.nsn}</a>
                 </td>
                 <td className="nomen" title={r.nomenclature}>{r.nomenclature}</td>
